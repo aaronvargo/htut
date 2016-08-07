@@ -118,7 +118,7 @@ defaultIncludeConfig = IncludeConfig "include"
                                   , md ".md"
                                   , md ".markdown"
                                   ]
-    f a b c = (a, Language [ b ] . lineCommentLabelParser $ c)
+    f a b c = (a, Language [ b ] $ lineCommentLabelParser c)
     md a = f a "markdown" "<!---"
 
 promptDisplay :: String -> String -> [String] -> String
