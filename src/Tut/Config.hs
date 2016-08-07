@@ -89,9 +89,12 @@ prefixLabelParser :: String -> Text -> Maybe Label
 prefixLabelParser p = fmap (T.unpack . T.strip) .
     T.stripPrefix (T.pack p) . T.strip
 
-lineCommentLabelParser :: Maybe String -> LabelParser
+lineCommentLabelParser :: String -> LabelParser
 lineCommentLabelParser =
-    LabelParser . fmap (prefixLabelParser . (++ "label"))
+    LabelParser . Just . prefixLabelParser . (++ "label")
+
+nullLabelParser :: LabelParser
+nullLabelParser = LabelParser Nothing
 
 defaultIncludeConfig :: IncludeConfig
 defaultIncludeConfig = IncludeConfig "include"
@@ -112,8 +115,11 @@ defaultIncludeConfig = IncludeConfig "include"
                                   , f ".cc" "cpp" "//"
                                   , f ".cpp" "cpp" "//"
                                   , f ".cs" "cs" "//"
+                                  , md ".md"
+                                  , md ".markdown"
                                   ]
-    f a b c = (a, Language [ b ] . lineCommentLabelParser $ Just c)
+    f a b c = (a, Language [ b ] . lineCommentLabelParser $ c)
+    md a = f a "markdown" "<!---"
 
 promptDisplay :: String -> String -> [String] -> String
 promptDisplay p e rs = unlines $ (p ++ " " ++ e) : rs
