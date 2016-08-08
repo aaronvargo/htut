@@ -9,6 +9,7 @@ import           Language.Haskell.Ghcid hiding ( loadFile )
 import           Tut.Misc
 import qualified Data.Map               as M
 import qualified Data.Text.IO           as T
+import           Data.List
 
 type Name = String
 
@@ -122,7 +123,7 @@ defaultIncludeConfig = IncludeConfig "include"
     md a = f a "markdown" "<!---"
 
 promptDisplay :: String -> String -> [String] -> String
-promptDisplay p e rs = unlines $ (p ++ " " ++ e) : rs
+promptDisplay p e rs = intercalate "\n" $ (p ++ " " ++ e) : rs
 
 defaultGhciConfig :: GhciConfig
 defaultGhciConfig = GhciConfig "ghci"
