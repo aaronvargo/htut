@@ -146,14 +146,14 @@ ghciF :: (MonadIO m, MonadReader GhciConfig m, MonadError e m, AsSessionNotFound
       -> (String, [String], [(String, String)])
       -> String
       -> m Block
-ghciF gs n (i, classes, nvs) c = do
+ghciF gs n x@(_, classes, _) c = do
     g <- getSession n gs
     newC <- traverse (displayExec g) (lines c)
     sk <- reader silenceKeyword
     return $
         if sk `elem` classes
         then Null
-        else CodeBlock (i, "haskell" : classes, nvs) (unlines newC)
+        else CodeBlock x (unlines newC)
 
 ghci :: (MonadIO m, MonadError e m, MonadReader GhciConfig m, Walkable Block b
         , AsSessionNotFound e)
