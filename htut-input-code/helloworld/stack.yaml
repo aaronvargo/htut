@@ -15,7 +15,7 @@
 # resolver:
 #  name: custom-snapshot
 #  location: "./custom-snapshot.yaml"
-resolver: nightly-2016-12-13
+resolver: lts-6.12
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,7 +37,6 @@ resolver: nightly-2016-12-13
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- 'hakyll'
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []

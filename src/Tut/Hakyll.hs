@@ -1,57 +1,61 @@
-{-# LANGUAGE UndecidableInstances       #-}
-{-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE TypeSynonymInstances       #-}
-{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 
-module Tut.Hakyll
-    ( hakyllTut
-    , defaultHakyllTut
-    ) where
+module Tut.Hakyll where
 
-import           Data.Aeson.Types
-import           Hakyll
-import           Text.Pandoc
-import           Tut.Config
-import           Tut.Pandoc
-import           Tut.Json
-import qualified Data.Text           as T
-import           Tut.Misc
-import           Control.Arrow
-import           Control.Applicative
+import Hakyll
+import qualified Hakyll.Internal as I
+import qualified Data.Text as T
+import Control.Monad.Base
+import Control.Monad.Trans.Control
+import Tut.Include
+import Tut.Ghci
+import Tut
+import Control.Monad.Except
+import Data.Foldable
+import Text.Pandoc
+import Control.Monad.Trans.Resource
+import Tut.Json
 
-instance MonadLoadFile Compiler where
-    loadFile = fmap (T.pack . itemBody) . load . fromFilePath
+newtype IOCompiler a = IOCompiler
+  { runIOCompiler :: Compiler a
+  } deriving (Functor, Applicative, Monad)
 
-newtype IOCompiler m a = IOCompiler { runCompiler :: m a }
-    deriving (Functor, Applicative, Monad, MonadMetadata)
+instance MonadBase IO IOCompiler where
+  liftBase = IOCompiler . unsafeCompiler
 
-deriving instance MonadError e m => MonadError e (IOCompiler m)
+instance MonadIO IOCompiler where
+  liftIO = liftBase
 
-instance MonadTrans IOCompiler where
-    lift = IOCompiler
+instance MonadLoadFile IOCompiler where
+  loadFile = IOCompiler . fmap (T.pack . itemBody) . load . fromFilePath
 
-instance MonadIO (IOCompiler Compiler) where
-    liftIO = IOCompiler . unsafeCompiler
+instance MonadError String IOCompiler where
+  throwError = IOCompiler . throwError . (:[])
+  catchError (IOCompiler c) f = IOCompiler $ catchError c (runIOCompiler . f . fold)
 
-hakyllTut :: IncludeConfig
-          -> (FilePath -> GhciCmd)
-          -> GhciConfig
-          -> Pandoc
-          -> Compiler Pandoc
-hakyllTut i gc gf doc = do
-    m <- getMetadata =<< getUnderlying
-    cfg <- eitherError . left (: []) $ parseEither (parseTut i gc gf) m
-    runCompiler . collapseErrors err $ tut cfg doc
-  where
-    err = \case
-        UnsupportedFileExt s -> [ "Unsupported extension: " ++ s ]
-        BlockNotFound fp lbl -> [ "Block '" ++ lbl ++ "' not found in: " ++ fp ]
-        IncludeNotFound s -> [ "No included file with name: " ++ s ]
-        SessionNotFound s -> [ "No ghci session with name: " ++ s ]
+instance MonadThrow IOCompiler where
+  throwM = liftBase . throwM
 
-defaultHakyllTut :: Pandoc -> Compiler Pandoc
-defaultHakyllTut = hakyllTut defaultIncludeConfig defaultGhciCmd defaultGhciConfig
+instance MonadBaseControl IO IOCompiler where
+  type StM IOCompiler a = I.CompilerResult a
+  liftBaseWith :: ((forall α. IOCompiler α -> IO (I.CompilerResult α)) -> IO a)
+               -> IOCompiler a
+  liftBaseWith f = do
+    cr <- IOCompiler $ I.compilerAsk
+    liftBase $ f $ \(IOCompiler (I.Compiler g)) -> g cr
+  restoreM = IOCompiler . I.Compiler . return . return
+
+hakyllTut
+  :: Walkable Block b
+  => MetaConfig GhciConfig -> MetaConfig IncludeConfig -> b -> Compiler b
+hakyllTut gcfg icfg doc = do
+  meta <- getMetadata =<< getUnderlying
+  runIOCompiler $
+    runResourceT $ doTransformation' (tutTransformation gcfg icfg) meta doc
+
+defaultHakyllTut :: Walkable Block b => b -> Compiler b
+defaultHakyllTut = hakyllTut ghciMetaConfig includeMetaConfig
