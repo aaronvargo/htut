@@ -1,4 +1,10 @@
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ImplicitParams #-}
+
+{-# OPTIONS -fno-warn-partial-type-signatures #-}
 
 module Tut.Ghci
   ( module Tut.Ghci
@@ -106,40 +112,48 @@ ghciMetaConfig = metaConfig "ghci" flds (project . mapping packed)
       , _prompt = fieldWDef "prompt" "λ"
       }
 
+type Allocator m = forall a. IO a -> (a -> IO ()) -> m (m (), a)
+
+allocator :: MonadResource m => Allocator m
+allocator a f = (mapped . _1 %~ release) $ allocate a f
+
+leakyAllocator :: MonadBase IO m => Allocator m
+leakyAllocator a f = liftBase $ do
+  x <- a
+  return $ (liftBase $ f x, x)
+
 ghciTransformation
-  :: ( MonadError e m
-     , MonadResource m
-     , AsUndefinedField e
+  :: ( AsReplError e
      , AsTransformationError e
-     , AsReplError e
+     , AsUndefinedField e
+     , MonadBase IO m
+     , MonadError e m
      )
-  => MetaConfig GhciConfig -> TransformationT m [(Text, IncludeConfig Maybe)]
-ghciTransformation =
+  => Allocator m
+  -> MetaConfig GhciConfig
+  -> TransformationT m [(Text, IncludeConfig Maybe)]
+ghciTransformation (allc :: Allocator _) =
   ((each . _2 . file . each %%~ relativizePath) . loadConfigs) <=<
-  metaTransformation ghciBlock
+  metaTransformation (ghciBlock allc)
 
 loadConfig :: Load -> Maybe (Text, IncludeConfig Maybe)
 loadConfig (Loading m f) =
   Just (T.toLower $ T.pack m, set file (Just f) (pure1 Nothing))
 loadConfig (Message _ _ _ _) = Nothing
 
-loadConfigs
-  :: Foldable t
-  => t (a1, (a, [Load])) -> [(Text, IncludeConfig Maybe)]
-loadConfigs m = catMaybes . fmap loadConfig $ maybe [] snd (snd <$> headMay m)
+loadConfigs :: [(a, [Load])] -> [(Text, IncludeConfig Maybe)]
+loadConfigs m = catMaybes . fmap loadConfig $ maybe [] snd (m ^? _head)
 
 ghciBlock
-  :: ( MonadError e m1
-     , MonadReader (GhciConfig Identity) m
+  :: ( AsReplError e
      , MonadBase IO m1
-     , MonadResource m
-     , AsReplError e
+     , Monad m
+     , MonadError e m1
      )
-  => m (CodeBlock -> m1 Block, (ReleaseKey, [Load]))
-ghciBlock = do
-  cfg <- ask
-  (rk, (g, ls)) <-
-    allocate
+  => Allocator m -> GhciConfig Identity -> m (CodeBlock -> m1 Block, m (), [Load])
+ghciBlock (allc :: Allocator _) cfg = do
+  (rls, (g, ls)) <-
+    allc
       (startGhci (command' cfg) (Just (project' cfg)) (callback' cfg))
       (stopGhci . fst)
   let evl t = do
@@ -149,6 +163,6 @@ ghciBlock = do
             res = unlines1 $ fmap (T.pack . sr) rs
         return $ ReplOutput res fl
       rpl = Repl ["haskell"] (prompt' cfg) evl "--"
-  return (replBlock rpl, (rk, ls))
+  return (replBlock rpl, rls, ls)
   where
     ghciErrorRegex = mkRegex "^(<interactive>.*:)|(<[^>]*>:.*error:)"

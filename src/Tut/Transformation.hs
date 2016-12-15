@@ -30,7 +30,17 @@ type Keyword = Text
 
 type Name = Text
 
-type TutWalk m = Map Keyword (Name -> CodeBlock -> m Block)
+data TutWalk m = TutWalk
+  { blockTransformers :: Map Keyword (Name -> CodeBlock -> m Block)
+  , finalizer :: m ()
+  }
+
+instance Functor1 TutWalk where
+  map1 f (TutWalk m r) = TutWalk ((fmap . fmap . fmap) f m) (f r)
+
+instance Applicative m => Monoid (TutWalk m) where
+  mappend (TutWalk a b) (TutWalk a' b') = TutWalk (mappend a a') (b *> b')
+  mempty = TutWalk mempty (pure ())
 
 walkKeywordNameBlocks
   :: (Monad m, Walkable Block b)
@@ -49,12 +59,12 @@ walkKeywordNameBlocks f =
     bl -> return bl
 
 walkTut :: (Monad m, Walkable Block b) => TutWalk m -> b -> m b
-walkTut m doc = walkKeywordNameBlocks f doc
+walkTut (TutWalk m r) doc = liftM2 const (walkKeywordNameBlocks f doc) r
   where f k n = sequence <$> traverse ($ n) (M.lookup k m)
 
 nameWalk
   :: (MonadError e m, AsTransformationError e)
-  => Keyword -> Map Name (CodeBlock -> m Block) -> TutWalk m
+  => Keyword -> Map Name (CodeBlock -> m Block) -> Map Keyword (Name -> CodeBlock -> m Block)
 nameWalk k m = M.singleton k f
   where f n cb = lookupError nameNotFound n m >>= ($ cb)
 
@@ -66,7 +76,9 @@ instance MonadTrans TransformationT where
   lift = TransformationT . lift . lift
 
 instance MFunctor TransformationT where
-  hoist f = mapTransformationT (f . (fmap . fmap . fmap . fmap . fmap) f)
+  hoist f = mapTransformationT (f . (fmap . fmap) (map1 f))
+
+deriving instance MonadBase b m => MonadBase b (TransformationT m)
 
 deriving instance
          MonadState s m => MonadState s (TransformationT m)
@@ -114,6 +126,27 @@ transformation
   -> TransformationT m a
 transformation = TransformationT . ReaderT . fmap (WriterT . fmap (snd &&& fst))
 
+-- metaTransformation
+--   :: ( MonadError e m
+--      , AsUndefinedField e
+--      , Traversable_1 f
+--      , Applicative1 f
+--      , AsTransformationError e
+--      )
+--   => ReaderT (f Identity) m (CodeBlock -> ReaderT (f Identity) m Block, ReaderT (f Identity) m (), a)
+--   -> MetaConfig f
+--   -> TransformationT m [(Name, a)]
+-- metaTransformation r cfg =
+--   transformation $
+--   \o -> do
+--     m <- (traverse . traverse) f =<< parseTutMeta cfg o
+--     let fs = M.fromList $ (fmap . fmap) (view _1) m
+--         fin = mapM_ (view (_2._2)) m
+--         as = (fmap . fmap) (view _3) m
+--     return (TutWalk (nameWalk (_topField cfg) fs) fin, as)
+--   where
+--     f c = runReaderT ((fmap . over _1 . fmap) (flip runReaderT c) r) c
+
 metaTransformation
   :: ( MonadError e m
      , AsUndefinedField e
@@ -121,18 +154,17 @@ metaTransformation
      , Applicative1 f
      , AsTransformationError e
      )
-  => ReaderT (f Identity) m (CodeBlock -> ReaderT (f Identity) m Block, a)
+  => (f Identity -> m (CodeBlock -> m Block, m (), a))
   -> MetaConfig f
   -> TransformationT m [(Name, a)]
-metaTransformation r cfg =
+metaTransformation f cfg =
   transformation $
   \o -> do
     m <- (traverse . traverse) f =<< parseTutMeta cfg o
-    let fs = M.fromList $ (fmap . fmap) fst m
-        as = (fmap . fmap) snd m
-    return (nameWalk (_topField cfg) fs, as)
-  where
-    f c = runReaderT ((fmap . first . fmap) (flip runReaderT c) r) c
+    let fs = M.fromList $ (fmap . fmap) (view _1) m
+        fin = mapM_ (view (_2._2)) m
+        as = (fmap . fmap) (view _3) m
+    return (TutWalk (nameWalk (_topField cfg) fs) fin, as)
 
 class AsParseError e =>
       AsTransformationError e  where

@@ -80,5 +80,5 @@ fixTextIndent t = T.unlines (T.drop minIndent <$> stripWhiteSpaceLines ts)
 unlines1 :: [Text] -> Text
 unlines1 = T.intercalate "\n"
 
-relativizePath :: MonadIO m => FilePath -> m FilePath
-relativizePath pth = (flip makeRelative pth) <$> liftIO getCurrentDirectory
+relativizePath :: MonadBase IO m => FilePath -> m FilePath
+relativizePath pth = (flip makeRelative pth) <$> liftBase getCurrentDirectory

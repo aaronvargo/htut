@@ -4,13 +4,11 @@
 module Tut.Repl where
 
 import Prelude hiding (fail)
-import Tut.Misc
+import Tut.Misc hiding (fail)
 import Tut.Transformation
-import Tut.Imports hiding (fail)
 import Text.Pandoc
 import Data.List (groupBy, delete)
 import qualified Data.Text as T
-import Control.Lens
 import Data.Bool(bool)
 import Data.Function(on)
 

@@ -1,3 +1,7 @@
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module Tut
   ( module Tut
   , module X
@@ -8,28 +12,32 @@ import Tut.Include as X
 import Tut.Ghci as X
 import Tut.Json
 import Tut.Repl
+import Tut.Misc
 
 tutTransformation
-  :: ( MonadError e m
-     , MonadResource m
-     , AsUndefinedField e
-     , AsTransformationError e
-     , AsReplError e
+  :: ( MonadLoadFile m
      , IncludeError e
-     , MonadLoadFile m
+     , AsReplError e
+     , AsTransformationError e
+     , AsUndefinedField e
+     , MonadError e m
+     , MonadBase IO m
      )
-  => MetaConfig GhciConfig -> MetaConfig IncludeConfig -> TransformationT m ()
-tutTransformation gcfg icfg = do
-  ghciTransformation gcfg >>= includeTransformationWithConfigs icfg
+  => Allocator m
+  -> MetaConfig GhciConfig
+  -> MetaConfig IncludeConfig
+  -> TransformationT m ()
+tutTransformation (allc :: Allocator _) gcfg icfg = do
+  ghciTransformation allc gcfg >>= includeTransformationWithConfigs icfg
 
-defaultTutTransformation
-  :: ( MonadError e m
-     , MonadResource m
-     , AsUndefinedField e
-     , AsTransformationError e
-     , AsReplError e
-     , IncludeError e
-     , MonadLoadFile m
-     )
-  => TransformationT m ()
-defaultTutTransformation = tutTransformation ghciMetaConfig includeMetaConfig
+-- defaultTutTransformation
+--   :: ( MonadError e m
+--      , MonadResource m
+--      , AsUndefinedField e
+--      , AsTransformationError e
+--      , AsReplError e
+--      , IncludeError e
+--      , MonadLoadFile m
+--      )
+--   => TransformationT m ()
+-- defaultTutTransformation = tutTransformation ghciMetaConfig includeMetaConfig

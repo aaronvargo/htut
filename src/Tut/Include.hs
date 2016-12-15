@@ -137,7 +137,8 @@ includeTransformation
      , MonadLoadFile m
      )
   => MetaConfig IncludeConfig -> TransformationT m ()
-includeTransformation = void <$> metaTransformation ((, ()) <$> includeBlock)
+includeTransformation =
+  void <$> metaTransformation (fmap (, return (), ()) <$> includeBlock)
 
 includeTransformationWithConfigs
   :: ( MonadError e m
@@ -153,7 +154,7 @@ includeTransformationWithConfigs c cs =
   includeTransformation $ (extraConfigs <>~ Endo (++ cs)) c
 
 class Monad m =>
-      MonadLoadFile m  where
+      MonadLoadFile m where
   loadFile :: FilePath -> m Text
 
 instance MonadLoadFile IO where
@@ -187,22 +188,19 @@ parseBlocks lp t = do
 includeBlock
   :: ( MonadError e m
      , MonadError e1 m1
-     , MonadReader (IncludeConfig Identity) m
      , IncludeError e
      , IncludeError e1
      , MonadLoadFile m
      )
-  => m (CodeBlock -> m1 Block)
-includeBlock = do
-  (ls, fp) <- reader (languages' &&& file')
-  Language lcs lp <- lookupError unsupportedFileExt (takeExtension fp) ls
-  txt <- loadFile fp
+  => IncludeConfig Identity -> m (CodeBlock -> m1 Block)
+includeBlock cfg = do
+  let pth = file' cfg
+  Language lcs lp <-
+    lookupError unsupportedFileExt (takeExtension pth) (languages' cfg)
+  txt <- loadFile pth
   blcks <- parseBlocks lp txt
-  frmt <- reader formatter'
-  let getBlock lbl = maybeError (blockNotFound fp lbl) (M.lookup lbl blcks)
-      trns =
-        modClassesBody $
-        \cs t -> do
-          ts <- traverse getBlock (T.words t)
-          return (lcs ++ cs, frmt ts)
-  return trns
+  let getBlock lbl = maybeError (blockNotFound pth lbl) (M.lookup lbl blcks)
+  return $
+    modClassesBody $ \cs t -> do
+      ts <- traverse getBlock (T.words t)
+      return (lcs ++ cs, formatter' cfg ts)
