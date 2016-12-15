@@ -51,6 +51,7 @@ library
                      , unordered-containers
                      , yaml
                      , hakyll
+                     , directory
 
   default-extensions:  PartialTypeSignatures
                      , NoMonomorphismRestriction

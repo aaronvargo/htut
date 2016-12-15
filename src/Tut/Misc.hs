@@ -12,6 +12,8 @@ import qualified Data.Text as T
 import Data.Char (isSpace)
 import Data.Key
 import Data.List
+import System.Directory
+import System.FilePath
 
 headMay
   :: Foldable t
@@ -77,3 +79,6 @@ fixTextIndent t = T.unlines (T.drop minIndent <$> stripWhiteSpaceLines ts)
 
 unlines1 :: [Text] -> Text
 unlines1 = T.intercalate "\n"
+
+relativizePath :: MonadIO m => FilePath -> m FilePath
+relativizePath pth = (flip makeRelative pth) <$> liftIO getCurrentDirectory

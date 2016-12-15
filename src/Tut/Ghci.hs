@@ -13,7 +13,6 @@ import Language.Haskell.Ghcid
 import Tut.Include
 import Tut.Repl hiding (prompt)
 import Tut.Misc
-import Tut.Imports
 import Control.Monad.Trans.Resource
 import Data.Aeson.Types
 import Text.Pandoc as P
@@ -22,7 +21,6 @@ import Tut.Json
 import Tut.Transformation
 import Data.Bool (bool)
 import Control.Category1
-import Control.Lens
 import Data.Text.Strict.Lens
 import Text.Regex
 import Data.Maybe
@@ -116,7 +114,9 @@ ghciTransformation
      , AsReplError e
      )
   => MetaConfig GhciConfig -> TransformationT m [(Text, IncludeConfig Maybe)]
-ghciTransformation = fmap loadConfigs . metaTransformation ghciBlock
+ghciTransformation =
+  ((each . _2 . file . each %%~ relativizePath) . loadConfigs) <=<
+  metaTransformation ghciBlock
 
 loadConfig :: Load -> Maybe (Text, IncludeConfig Maybe)
 loadConfig (Loading m f) =
