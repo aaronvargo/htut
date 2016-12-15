@@ -37,7 +37,10 @@ resolver: nightly-2016-12-13
 # will not be run. This is useful for tweaking upstream packages.
 packages:
 - '.'
-- 'hakyll'
+- location:
+    git: https://github.com/aaronvargo/hakyll.git
+    commit: 322c3b02f18b255830f8337e1966ed8966a413e5
+
 # Dependency packages to be pulled from upstream that are not in the resolver
 # (e.g., acme-missiles-0.3)
 extra-deps: []
